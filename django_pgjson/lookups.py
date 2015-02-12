@@ -21,6 +21,12 @@ class KeyTransform(Transform):
         if isinstance(self.key, int):
             return "%s->>%s" % (lhs, self.key), params
 
+        #nested queries are performed by separating fields with "_at_"
+        keyList = self.key.split('_at_')
+        if len(keyList)>1:
+            lastKey = keyList[-1]
+            return "%s->%s->>'%s'" % (lhs, "->".join(["'%s'" % key for key in keyList[:-1]]), lastKey), params
+
         return "%s->>'%s'" % (lhs, self.key), params
 
     @cached_property
