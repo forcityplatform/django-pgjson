@@ -42,7 +42,10 @@ class JsonField(six.with_metaclass(models.SubfieldBase, models.Field)):
 
     def to_python(self, value):
         if isinstance(value, six.string_types):
-            value = json.loads(value)
+            if value:#string not empty
+                value = json.loads(value)
+            else:
+                value = {}
         return value
 
     def formfield(self, **kwargs):
