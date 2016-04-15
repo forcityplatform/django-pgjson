@@ -1,11 +1,14 @@
-# -*- coding: utf-8 -*-
+# -*- encoding: utf-8 -*-
 
 from django.utils.functional import cached_property
 from django.utils import six
-from django.db.models import Transform, Lookup
+from django.db.models import Transform, Lookup, CharField
 
 
 class KeyTransform(Transform):
+
+    output_field = CharField()
+
     def __init__(self, key, base_field, *args, **kwargs):
         super(KeyTransform, self).__init__(*args, **kwargs)
         try:
@@ -15,11 +18,19 @@ class KeyTransform(Transform):
 
         self.base_field = base_field
 
+    def relabeled_clone(self, relabels):
+        return self.__class__(
+            self.key,
+            self.base_field,
+            self.lhs.relabeled_clone(relabels),
+            ['at_%s' % self.key]
+        )
+
     def as_sql(self, qn, connection):
         lhs, params = qn.compile(self.lhs)
 
         if isinstance(self.key, int):
-            return "%s->>%s" % (lhs, self.key), params
+            return "(%s->>%s)" % (lhs, self.key), params
 
         #nested queries are performed by separating fields with "_at_"
         keyList = self.key.split('_at_')
@@ -27,7 +38,7 @@ class KeyTransform(Transform):
             lastKey = keyList[-1]
             return "%s->%s->>'%s'" % (lhs, "->".join(["'%s'" % key for key in keyList[:-1]]), lastKey), params
 
-        return "%s->>'%s'" % (lhs, self.key), params
+        return "(%s->>'%s')" % (lhs, self.key), params
 
     @cached_property
     def output_type(self):
@@ -111,3 +122,36 @@ class JsonBContainsLookup(Lookup):
         rhs, rhs_params = self.process_rhs(qn, connection)
         params = lhs_params + rhs_params
         return "{0} @> {1}::jsonb".format(lhs, rhs), params
+
+
+class JsonBHasLookup(Lookup):
+    """ JsonB specific lookup for the has (?) operator """
+    lookup_name = 'jhas'
+
+    def as_sql(self, qn, connection):
+        lhs, lhs_params = self.process_lhs(qn, connection)
+        rhs, rhs_params = self.process_rhs(qn, connection)
+        params = lhs_params + rhs_params
+        return "{0} ? {1}".format(lhs, rhs), params
+
+
+class JsonBHasAnyLookup(Lookup):
+    """ JsonB specific lookup for the has any (?|) operator """
+    lookup_name = 'jhas_any'
+
+    def as_sql(self, qn, connection):
+        lhs, lhs_params = self.process_lhs(qn, connection)
+        rhs, rhs_params = self.process_rhs(qn, connection)
+        params = lhs_params + rhs_params
+        return "{0} ?| {1}".format(lhs, rhs), params
+
+
+class JsonBHasAllLookup(Lookup):
+    """ JsonB specific lookup for the has all (?&) operator """
+    lookup_name = 'jhas_all'
+
+    def as_sql(self, qn, connection):
+        lhs, lhs_params = self.process_lhs(qn, connection)
+        rhs, rhs_params = self.process_rhs(qn, connection)
+        params = lhs_params + rhs_params
+        return "{0} ?& {1}".format(lhs, rhs), params
